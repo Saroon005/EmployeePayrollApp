@@ -10,9 +10,10 @@ package com.employeepayroll.app;
  * - UC2: Employee Authentication (file-based)
  * - UC3: Monthly Payslip Generation
  * - UC4: Payslip Print / Download
+ * - UC5: Dashboard Display (role-based)
  *
  * @author Developer
- * @version 4.0
+ * @version 5.0
  */
 
 
@@ -34,6 +35,7 @@ import com.employeepayroll.model.UserAccount;
 import com.employeepayroll.payroll.Payslip;
 import com.employeepayroll.payroll.PayrollService;
 import com.employeepayroll.util.Validator;
+import com.employeepayroll.dashboard.DashboardService;
 
 public class EmployeePayrollApp {
 
@@ -47,7 +49,8 @@ public class EmployeePayrollApp {
         System.out.println("1. Register");
         System.out.println("2. Login");
         System.out.println("3. Generate Payslip");
-        System.out.println("4. Print / Download Payslip\n");
+        System.out.println("4. Print / Download Payslip");
+        System.out.println("5. Dashboard\n");
 
         System.out.print("Enter choice: ");
         String choice = sc.nextLine().trim();
@@ -57,6 +60,7 @@ public class EmployeePayrollApp {
             case "2" -> login(sc);
             case "3" -> generatePayslip(sc);
             case "4" -> downloadPayslip(sc);
+            case "5" -> dashboard(sc);
             default -> System.out.println("Invalid choice");
         }
 
@@ -289,6 +293,22 @@ public class EmployeePayrollApp {
         } catch (Exception e) {
             System.out.println("Error during payslip download.");
         }
+    }
+
+    private static void dashboard(Scanner sc) {
+
+        System.out.println("\n=== USE CASE 5: DASHBOARD DISPLAY ===\n");
+
+        Employee employee = authenticateEmployee(sc);
+        if (employee == null) {
+            return;
+        }
+
+        System.out.print("Enter role (EMPLOYEE / MANAGER): ");
+        String role = sc.nextLine().trim();
+
+        DashboardService service = new DashboardService();
+        service.displayDashboard(employee, role);
     }
 
     private static PayslipSnapshot findPayslipSnapshot(String empId, String month) {
