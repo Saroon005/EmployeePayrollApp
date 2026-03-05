@@ -2,16 +2,16 @@ package com.employeepayroll.app;
 
 /*
  * ==========================================================
- * EMPLOYEE PAYROLL APP (UC1 + UC2 IN ONE RUNNER)
+ * EMPLOYEE PAYROLL APP (UC1 + UC2 + UC3 IN ONE RUNNER)
  * ==========================================================
  *
- * Goal of this Use Case:
- * - Demonstrate a simple authentication flow
- * - Verify credentials using stored (hashed) password data
+ * This single console runner includes:
+ * - UC1: Employee Registration
+ * - UC2: Employee Authentication (file-based)
+ * - UC3: Monthly Payslip Generation
  *
- * This use case builds directly on UC1.
  * @author Developer
- * @version 2.0
+ * @version 3.0
  */
 
 
@@ -25,6 +25,8 @@ import java.util.Scanner;
 import com.employeepayroll.exceptions.ValidationException;
 import com.employeepayroll.model.Employee;
 import com.employeepayroll.model.UserAccount;
+import com.employeepayroll.payroll.Payslip;
+import com.employeepayroll.payroll.PayrollService;
 import com.employeepayroll.util.Validator;
 
 public class EmployeePayrollApp {
@@ -37,7 +39,8 @@ public class EmployeePayrollApp {
 
         System.out.println("=== EMPLOYEE PAYROLL APP ===\n");
         System.out.println("1. Register");
-        System.out.println("2. Login\n");
+        System.out.println("2. Login");
+        System.out.println("3. Generate Payslip\n");
 
         System.out.print("Enter choice: ");
         String choice = sc.nextLine().trim();
@@ -45,6 +48,7 @@ public class EmployeePayrollApp {
         switch (choice) {
             case "1" -> register(sc);
             case "2" -> login(sc);
+            case "3" -> generatePayslip(sc);
             default -> System.out.println("Invalid choice");
         }
 
@@ -106,6 +110,94 @@ public class EmployeePayrollApp {
             return;
         }
 
+        Employee employee = authenticateEmployee(sc);
+        if (employee == null) {
+            return;
+        }
+
+        System.out.println("\nLogin Successful!");
+        System.out.println("Role: EMPLOYEE\n");
+
+        System.out.println("====== DASHBOARD ======");
+        System.out.println("Employee Dashboard");
+        System.out.println("View Payslip | Update Profile\n");
+
+        Session session = new Session(employee.getAccount().getUsername());
+        System.out.println(session);
+
+        if (session.isExpired()) {
+            System.out.println("Session expired.");
+        } else {
+            System.out.println("Session active and valid.");
+        }
+    }
+
+    private static void generatePayslip(Scanner sc) {
+
+        /*
+         * ==========================================================
+         * USE CASE 3: PAYSLIP GENERATION
+         * ==========================================================
+         *
+         * Goal of this Use Case:
+         * - Understand how multiple objects collaborate
+         * - Learn HAS-A relationships between classes
+         * - Separate calculation logic from data representation
+         *
+         * New ideas introduced in UC3:
+         * - Aggregation
+         * - Composition
+         * - Service class for business logic
+         */
+
+        System.out.println("\n=== USE CASE 3: PAYSLIP GENERATION ===\n");
+
+        Employee employee = authenticateEmployee(sc);
+        if (employee == null) {
+            return;
+        }
+
+        System.out.print("Enter Month (e.g., January 2026): ");
+        String month = sc.nextLine().trim();
+
+        System.out.println("\nEnter salary amounts (enter 0 if not applicable)");
+        double basic = readDouble(sc, "Enter Basic Salary: ");
+        double hra = readDouble(sc, "Enter HRA: ");
+        double da = readDouble(sc, "Enter DA: ");
+        double allowances = readDouble(sc, "Enter Allowances: ");
+
+        PayrollService payroll = new PayrollService();
+        Payslip payslip = payroll.generatePayslip(employee, month, basic, hra, da, allowances);
+
+        System.out.println(payslip);
+
+        try {
+            payroll.persist(payslip);
+        } catch (IOException e) {
+            System.out.println("Error saving payslip history!");
+        }
+    }
+
+    private static double readDouble(Scanner sc, String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String raw = sc.nextLine().trim();
+            try {
+                return Double.parseDouble(raw);
+            } catch (NumberFormatException e) {
+                System.out.println("Please enter a valid number.");
+            }
+        }
+    }
+
+    private static Employee authenticateEmployee(Scanner sc) {
+
+        Path filePath = Path.of("employee_data.txt");
+        if (!Files.exists(filePath)) {
+            System.out.println("No employee data found. Please register first.");
+            return null;
+        }
+
         for (int attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
 
             System.out.print("Enter Username: ");
@@ -114,26 +206,9 @@ public class EmployeePayrollApp {
             System.out.print("Enter Password: ");
             String password = sc.nextLine();
 
-            UserAccount account = loadAccountFromFile(username);
-
-            if (account != null && account.authenticate(password)) {
-                System.out.println("\nLogin Successful!");
-                System.out.println("Role: EMPLOYEE\n");
-
-                System.out.println("====== DASHBOARD ======");
-                System.out.println("Employee Dashboard");
-                System.out.println("View Payslip | Update Profile\n");
-
-                Session session = new Session(username);
-                System.out.println(session);
-
-                if (session.isExpired()) {
-                    System.out.println("Session expired.");
-                } else {
-                    System.out.println("Session active and valid.");
-                }
-
-                return;
+            Employee employee = loadEmployeeFromFile(username);
+            if (employee != null && employee.getAccount().authenticate(password)) {
+                return employee;
             }
 
             int remaining = MAX_LOGIN_ATTEMPTS - attempt;
@@ -146,12 +221,19 @@ public class EmployeePayrollApp {
                 System.out.println("Failed login notification sent.");
             }
         }
+
+        return null;
     }
 
-    private static UserAccount loadAccountFromFile(String username) {
+    private static Employee loadEmployeeFromFile(String username) {
         try {
             List<String> lines = Files.readAllLines(Path.of("employee_data.txt"), StandardCharsets.UTF_8);
 
+            String internalId = null;
+            String empId = null;
+            String name = null;
+            String email = null;
+            String phone = null;
             String foundHash = null;
             String foundSalt = null;
 
@@ -174,16 +256,22 @@ public class EmployeePayrollApp {
 
                 String fileUsername = parts[6];
                 if (username.equals(fileUsername)) {
+                    internalId = parts[1];
+                    empId = parts[2];
+                    name = parts[3];
+                    email = parts[4];
+                    phone = parts[5];
                     foundHash = parts[7];
                     foundSalt = parts[8];
                 }
             }
 
-            if (foundHash == null || foundSalt == null) {
+            if (internalId == null || empId == null || name == null || foundHash == null || foundSalt == null) {
                 return null;
             }
 
-            return new UserAccount(username, foundHash, foundSalt, true);
+            UserAccount account = new UserAccount(username, foundHash, foundSalt, true);
+            return new Employee(internalId, empId, name, email, phone, account);
         } catch (IOException e) {
             return null;
         }
