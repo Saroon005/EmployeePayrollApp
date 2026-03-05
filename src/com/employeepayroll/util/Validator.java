@@ -1,7 +1,5 @@
 package com.employeepayroll.util;
 
-import java.util.regex.Pattern;
-
 import com.employeepayroll.exceptions.ValidationException;
 
 /*
@@ -19,17 +17,8 @@ import com.employeepayroll.exceptions.ValidationException;
  */
 public class Validator {
 
-    private static final Pattern EMAIL_PATTERN = Pattern.compile(
-            "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
-    );
-
-    private static final Pattern PHONE_PATTERN = Pattern.compile(
-            "^[6-9]\\d{9}$"
-    );
-
-    private static final Pattern EMP_ID_PATTERN = Pattern.compile(
-            "^EMP-\\d{4}$"
-    );
+    // UC6 introduced ValidationService as the centralized validation boundary.
+    // Validator remains as a small wrapper to avoid breaking earlier UC code.
 
     /*
      * Checks whether an email follows a valid format.
@@ -39,12 +28,7 @@ public class Validator {
      * - Program flow jumps to the catch block in main()
      */
     public static void validateEmail(String email) throws ValidationException {
-        if (email == null || email.isBlank()) {
-            throw new ValidationException("Email cannot be empty");
-        }
-        if (!EMAIL_PATTERN.matcher(email.trim()).matches()) {
-            throw new ValidationException("Invalid email format");
-        }
+        ValidationService.validateEmail(email);
     }
 
     /*
@@ -55,12 +39,7 @@ public class Validator {
      * - Must be exactly 10 digits
      */
     public static void validatePhone(String phone) throws ValidationException {
-        if (phone == null || phone.isBlank()) {
-            throw new ValidationException("Phone number cannot be empty");
-        }
-        if (!PHONE_PATTERN.matcher(phone.trim()).matches()) {
-            throw new ValidationException("Invalid phone number format");
-        }
+        ValidationService.validatePhone(phone);
     }
 
     /*
@@ -70,11 +49,20 @@ public class Validator {
      * - Must follow EMP-XXXX where X is a digit
      */
     public static void validateEmpId(String empId) throws ValidationException {
-        if (empId == null || empId.isBlank()) {
-            throw new ValidationException("Employee ID cannot be empty");
-        }
-        if (!EMP_ID_PATTERN.matcher(empId.trim()).matches()) {
-            throw new ValidationException("Invalid Employee ID format. Expected EMP-XXXX");
-        }
+        ValidationService.validateEmployeeId(empId);
+    }
+
+    /*
+     * UC6 addition: password strength rules.
+     */
+    public static void validatePassword(String password) throws ValidationException {
+        ValidationService.validatePassword(password);
+    }
+
+    /*
+     * UC6 naming alignment: validateEmployeeId().
+     */
+    public static void validateEmployeeId(String empId) throws ValidationException {
+        ValidationService.validateEmployeeId(empId);
     }
 }

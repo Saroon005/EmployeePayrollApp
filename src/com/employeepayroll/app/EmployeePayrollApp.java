@@ -11,9 +11,10 @@ package com.employeepayroll.app;
  * - UC3: Monthly Payslip Generation
  * - UC4: Payslip Print / Download
  * - UC5: Dashboard Display (role-based)
+ * - UC6: Input Validation (exception hierarchy + fail-fast)
  *
  * @author Developer
- * @version 5.0
+ * @version 6.0
  */
 
 
@@ -50,7 +51,8 @@ public class EmployeePayrollApp {
         System.out.println("2. Login");
         System.out.println("3. Generate Payslip");
         System.out.println("4. Print / Download Payslip");
-        System.out.println("5. Dashboard\n");
+        System.out.println("5. Dashboard");
+        System.out.println("6. UC6 Input Validation\n");
 
         System.out.print("Enter choice: ");
         String choice = sc.nextLine().trim();
@@ -61,6 +63,7 @@ public class EmployeePayrollApp {
             case "3" -> generatePayslip(sc);
             case "4" -> downloadPayslip(sc);
             case "5" -> dashboard(sc);
+            case "6" -> useCase6InputValidation(sc);
             default -> System.out.println("Invalid choice");
         }
 
@@ -75,6 +78,7 @@ public class EmployeePayrollApp {
             System.out.print("Enter Employee ID (EMP-XXXX): ");
             String empId = sc.nextLine();
             Validator.validateEmpId(empId);
+            empId = empId.trim().toUpperCase();
 
             System.out.print("Enter Name: ");
             String name = sc.nextLine();
@@ -86,16 +90,19 @@ public class EmployeePayrollApp {
             System.out.print("Enter Phone (10 digits starting 6-9): ");
             String phone = sc.nextLine();
             Validator.validatePhone(phone);
+            phone = phone.trim().replace(" ", "").replace("-", "");
 
             System.out.print("\nCreate Username: ");
-            String username = sc.nextLine();
+            String username = sc.nextLine().trim();
 
             System.out.print("\nCreate Password: ");
             String password = sc.nextLine();
+            Validator.validatePassword(password);
+            password = password.trim();
 
             // Create objects (Composition: Employee HAS a UserAccount)
             UserAccount account = new UserAccount(username, password);
-            Employee employee = new Employee(empId.trim(), name.trim(), email.trim(), phone.trim(), account);
+            Employee employee = new Employee(empId, name.trim(), email.trim(), phone, account);
 
             // Persist
             employee.persist();
@@ -109,6 +116,57 @@ public class EmployeePayrollApp {
             System.out.println("\nValidation Failed: " + e.getMessage());
         } catch (IOException e) {
             System.out.println("\nError saving employee data!");
+        }
+    }
+
+    private static void useCase6InputValidation(Scanner sc) {
+
+        /*
+         * ==========================================================
+         * USE CASE 6: INPUT VALIDATION
+         * ==========================================================
+         *
+         * Goal of this Use Case:
+         * - Validate user input before it enters the system
+         * - Centralize validation logic
+         * - Learn how exceptions are used to handle invalid data
+         *
+         * New ideas introduced in UC6:
+         * - Exception hierarchy
+         * - Custom checked exceptions
+         * - Fail-fast validation
+         *
+         * This use case brings together lessons from:
+         * - UC1: Input handling
+         * - UC2: Controlled program flow
+         * - UC3-UC5: Clean separation of responsibilities
+         */
+
+        System.out.println("=== USE CASE 6: INPUT VALIDATION ===\n");
+
+        try {
+            System.out.print("Enter Employee ID (EMP-XXXX): ");
+            String empId = sc.nextLine();
+            Validator.validateEmployeeId(empId);
+
+            System.out.print("Enter Email: ");
+            String email = sc.nextLine();
+            Validator.validateEmail(email);
+
+            System.out.print("Enter Phone Number: ");
+            String phone = sc.nextLine();
+            Validator.validatePhone(phone);
+
+            System.out.print("Create Password: ");
+            String password = sc.nextLine();
+            Validator.validatePassword(password);
+
+            System.out.println("\nAll inputs are VALID. Registration/Login can proceed.");
+        }
+        catch (ValidationException ex) {
+            // Single catch block handles all validation failures
+            System.out.println("\nValidation Failed:");
+            System.out.println(ex.getMessage());
         }
     }
 

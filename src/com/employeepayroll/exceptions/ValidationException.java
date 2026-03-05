@@ -1,16 +1,15 @@
 package com.employeepayroll.exceptions;
 
 /*
- * ------------------ Custom Exception ------------------
+ * ================= Base Exception =================
  *
- * This class represents a validation-related problem.
+ * ValidationException is the base class for all validation errors.
  *
- * Why this exists:
- * - Instead of stopping the program abruptly,
- *   we clearly communicate what went wrong.
+ * Why this class exists:
+ * - ALL validation-related problems belong to one category
+ * - Allows a single catch block to handle all validation failures
  *
- * For now, think of this as:
- * "A special error we throw when input is invalid"
+ * This introduces the idea of an exception hierarchy.
  */
 public class ValidationException extends Exception {
     public ValidationException(String message) {
