@@ -9,9 +9,10 @@ package com.employeepayroll.app;
  * - UC1: Employee Registration
  * - UC2: Employee Authentication (file-based)
  * - UC3: Monthly Payslip Generation
+ * - UC4: Payslip Print / Download
  *
  * @author Developer
- * @version 3.0
+ * @version 4.0
  */
 
 
@@ -21,8 +22,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.employeepayroll.exceptions.ValidationException;
+import com.employeepayroll.download.DownloadToken;
+import com.employeepayroll.download.FileService;
+import com.employeepayroll.download.ImmutablePayslip;
 import com.employeepayroll.model.Employee;
 import com.employeepayroll.model.UserAccount;
 import com.employeepayroll.payroll.Payslip;
@@ -40,7 +46,8 @@ public class EmployeePayrollApp {
         System.out.println("=== EMPLOYEE PAYROLL APP ===\n");
         System.out.println("1. Register");
         System.out.println("2. Login");
-        System.out.println("3. Generate Payslip\n");
+        System.out.println("3. Generate Payslip");
+        System.out.println("4. Print / Download Payslip\n");
 
         System.out.print("Enter choice: ");
         String choice = sc.nextLine().trim();
@@ -49,6 +56,7 @@ public class EmployeePayrollApp {
             case "1" -> register(sc);
             case "2" -> login(sc);
             case "3" -> generatePayslip(sc);
+            case "4" -> downloadPayslip(sc);
             default -> System.out.println("Invalid choice");
         }
 
@@ -157,8 +165,21 @@ public class EmployeePayrollApp {
             return;
         }
 
-        System.out.print("Enter Month (e.g., January 2026): ");
-        String month = sc.nextLine().trim();
+        Payslip payslip = generatePayslipForEmployee(sc, employee, null);
+        if (payslip == null) {
+            return;
+        }
+
+        System.out.println(payslip);
+    }
+
+    private static Payslip generatePayslipForEmployee(Scanner sc, Employee employee, String month) {
+
+        String monthValue = month;
+        if (monthValue == null || monthValue.isBlank()) {
+            System.out.print("Enter Month (e.g., January 2026): ");
+            monthValue = sc.nextLine().trim();
+        }
 
         System.out.println("\nEnter salary amounts (enter 0 if not applicable)");
         double basic = readDouble(sc, "Enter Basic Salary: ");
@@ -167,14 +188,209 @@ public class EmployeePayrollApp {
         double allowances = readDouble(sc, "Enter Allowances: ");
 
         PayrollService payroll = new PayrollService();
-        Payslip payslip = payroll.generatePayslip(employee, month, basic, hra, da, allowances);
-
-        System.out.println(payslip);
+        Payslip payslip = payroll.generatePayslip(employee, monthValue, basic, hra, da, allowances);
 
         try {
             payroll.persist(payslip);
         } catch (IOException e) {
             System.out.println("Error saving payslip history!");
+        }
+
+        return payslip;
+    }
+
+    private static void downloadPayslip(Scanner sc) {
+
+        /*
+         * ==========================================================
+         * USE CASE 4: PAYSLIP PRINT / DOWNLOAD
+         * ==========================================================
+         *
+         * Goal of this Use Case:
+         * - Protect existing data from accidental modification
+         * - Learn how objects can be safely copied
+         * - Understand how object equality works
+         *
+         * New ideas introduced in UC4:
+         * - Immutability
+         * - Cloning objects
+         * - equals() and hashCode()
+         * - Simple file persistence
+         */
+
+        System.out.println("\n=== USE CASE 4: PAYSLIP PRINT / DOWNLOAD ===\n");
+
+        Employee employee = authenticateEmployee(sc);
+        if (employee == null) {
+            return;
+        }
+
+        System.out.print("Enter Month (e.g., January 2026): ");
+        String month = sc.nextLine().trim();
+
+        // UC4 should not ask salary inputs.
+        // It should use an existing saved payslip (UC3 history).
+        PayslipSnapshot snapshot = findPayslipSnapshot(employee.getEmpId(), month);
+
+        ImmutablePayslip original;
+        if (snapshot != null) {
+            original = new ImmutablePayslip(snapshot.empId, snapshot.empName, snapshot.month, snapshot.netPay);
+        } else {
+            System.out.println("Payslip not available for the selected month.");
+            System.out.println("Redirecting to UC3 to generate it now...\n");
+
+            Payslip generated = generatePayslipForEmployee(sc, employee, month);
+            if (generated == null) {
+                return;
+            }
+
+            System.out.println(generated);
+
+            original = new ImmutablePayslip(
+                    employee.getEmpId(),
+                    employee.getName(),
+                    month,
+                    generated.getComponents().netPay
+            );
+        }
+
+        System.out.println("Original Payslip:\n");
+        System.out.println(original);
+
+        try {
+            // Clone payslip for download
+            ImmutablePayslip cloned = original.clone();
+
+            // Verify equality and identity
+            if (original.equals(cloned)) {
+                System.out.println("Verified: Download copy is equal to original.");
+            }
+            System.out.println("Original hashcode : " + original.hashCode());
+            System.out.println("Cloned hashcode   : " + cloned.hashCode());
+
+            // Check download expiry
+            DownloadToken token = new DownloadToken();
+            if (token.isExpired()) {
+                System.out.println("Download token expired. Please try again.");
+                return;
+            }
+
+            // Save payslip to files
+            FileService fileService = new FileService();
+            String textFile = fileService.savePayslipAsText(cloned);
+            String pdfFile = fileService.savePayslipAsPdf(cloned);
+
+            System.out.println("\nPayslip Download Successful.\n");
+            System.out.println("Saved as text file: " + textFile);
+            System.out.println("Saved as PDF file : " + pdfFile);
+
+            System.out.println("\n--- Printed Payslip ---\n");
+            System.out.println(cloned);
+        } catch (Exception e) {
+            System.out.println("Error during payslip download.");
+        }
+    }
+
+    private static PayslipSnapshot findPayslipSnapshot(String empId, String month) {
+
+        Path filePath = Path.of("payslip_history.txt");
+        if (!Files.exists(filePath)) {
+            return null;
+        }
+
+        try {
+            List<String> lines = Files.readAllLines(filePath, StandardCharsets.UTF_8);
+            PayslipSnapshot lastMatch = null;
+
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (line == null) {
+                    continue;
+                }
+
+                if (!line.contains("========== PAYSLIP ==========")) {
+                    continue;
+                }
+
+                int start = i;
+                int end = -1;
+                for (int j = start; j < lines.size(); j++) {
+                    String endLine = lines.get(j);
+                    if (endLine != null && endLine.contains("============================")) {
+                        end = j;
+                        break;
+                    }
+                }
+
+                if (end == -1) {
+                    break;
+                }
+
+                String block = String.join(System.lineSeparator(), lines.subList(start, end + 1));
+                PayslipSnapshot snapshot = parsePayslipBlock(block);
+
+                if (snapshot != null
+                        && empId.equals(snapshot.empId)
+                        && month.equals(snapshot.month)) {
+                    lastMatch = snapshot;
+                }
+
+                i = end;
+            }
+
+            return lastMatch;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static PayslipSnapshot parsePayslipBlock(String block) {
+        if (block == null || block.isBlank()) {
+            return null;
+        }
+
+        Pattern empIdPattern = Pattern.compile("Employee ID\\s*:\\s*(.+)");
+        Pattern namePattern = Pattern.compile("Employee Name\\s*:\\s*(.+)");
+        Pattern monthPattern = Pattern.compile("Month\\s*:\\s*(.+)");
+        Pattern netPattern = Pattern.compile("Net Pay\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)");
+
+        String empId = findFirst(block, empIdPattern);
+        String empName = findFirst(block, namePattern);
+        String month = findFirst(block, monthPattern);
+        String netStr = findFirst(block, netPattern);
+
+        if (empId == null || empName == null || month == null || netStr == null) {
+            return null;
+        }
+
+        try {
+            double netPay = Double.parseDouble(netStr);
+            return new PayslipSnapshot(empId.trim(), empName.trim(), month.trim(), netPay);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static String findFirst(String input, Pattern pattern) {
+        Matcher matcher = pattern.matcher(input);
+        if (!matcher.find()) {
+            return null;
+        }
+        return matcher.group(1);
+    }
+
+    private static class PayslipSnapshot {
+
+        private final String empId;
+        private final String empName;
+        private final String month;
+        private final double netPay;
+
+        private PayslipSnapshot(String empId, String empName, String month, double netPay) {
+            this.empId = empId;
+            this.empName = empName;
+            this.month = month;
+            this.netPay = netPay;
         }
     }
 
