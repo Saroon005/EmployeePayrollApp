@@ -52,6 +52,11 @@ public class UserAccount {
         return salt;
     }
 
+    public boolean authenticate(String plainPassword) {
+        String hashed = hashPassword(plainPassword, salt);
+        return passwordHash.equals(hashed);
+    }
+
     private static String requireNonBlank(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " cannot be empty");
